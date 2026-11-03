@@ -1,0 +1,123 @@
+// 1. Создаем аудио-движок
+const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+const notesFreq = { 'E': 329.63, 'B': 493.88, 'C': 523.25, 'A': 440.00 };
+
+function playTone(freq) {
+    if (audioCtx.state === 'suspended') audioCtx.resume();
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = 'triangle';
+    osc.frequency.value = freq;
+    gain.gain.setValueAtTime(0.3, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.3);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + 0.3);
+}
+
+// 2. Структура песни Rush E
+// lane: номер дорожки от 0 до 3. note: звук, который сыграет при попадании.
+const rushEData = [
+    { lane: 0, note: 'E', time: 0 },
+    { lane: 1, note: 'E', time: 400 },
+    { lane: 2, note: 'E', time: 800 },
+    { lane: 3, note: 'E', time: 1200 },
+    
+    { lane: 0, note: 'E', time: 1600 },
+    { lane: 1, note: 'E', time: 1800 },
+    { lane: 2, note: 'E', time: 2000 },
+    { lane: 3, note: 'E', time: 2200 },
+
+    { lane: 0, note: 'E', time: 2400 },
+    { lane: 1, note: 'B', time: 2600 },
+    { lane: 2, note: 'C', time: 2800 },
+    { lane: 3, note: 'B', time: 3000 },
+    { lane: 2, note: 'A', time: 3200 },
+    { lane: 1, note: 'E', time: 3400 },
+    
+    { lane: 0, note: 'E', time: 3600 },
+    { lane: 1, note: 'B', time: 3800 },
+    { lane: 2, note: 'C', time: 4000 },
+    { lane: 3, note: 'B', time: 4200 },
+    { lane: 2, note: 'A', time: 4400 },
+    { lane: 1, note: 'E', time: 4600 }
+];
+
+let score = 0;
+let activeTiles = []; // Список летящих квадратиков
+let gameInterval;
+const fallSpeed = 4; // Скорость падения плиток (пиксели за кадр)
+
+// 3. Запуск игрового процесса
+function startGame() {
+    score = 0;
+    document.getElementById('score').innerText = score;
+    
+    // Планируем появление плиток по времени их таймингов
+    rushEData.forEach(tileData => {
+        setTimeout(() => {
+            createTile(tileData.lane, tileData.note);
+        }, tileData.time);
+    });
+
+    // Запускаем игровой цикл обновления анимации (60 кадров в секунду)
+    gameInterval = requestAnimationFrame(updateGame);
+}
+
+// Создание квадратика на экране
+function createTile(laneNum, noteName) {
+    const laneElement = document.getElementById(`lane-${laneNum}`);
+    const tile = document.createElement('div');
+    tile.classList.add('tile');
+    tile.style.top = '-90px'; // Появляется за пределами экрана сверху
+    laneElement.appendChild(tile);
+
+    activeTiles.push({
+        element: tile,
+        lane: laneNum,
+        note: noteName,
+        top: -90
+    });
+}
+
+// Движение квадратиков вниз
+function updateGame() {
+    for (let i = activeTiles.length - 1; i >= 0; i--) {
+        let tile = activeTiles[i];
+        tile.top += fallSpeed;
+        tile.element.style.top = tile.top + 'px';
+
+        // Если плитка упала до самого низа и игрок её пропустил
+        if (tile.top > 600) {
+            tile.element.remove();
+            activeTiles.splice(i, 1);
+            cancelAnimationFrame(gameInterval);
+            gameOver(score); // Проигрыш
+            return;
+        }
+    }
+    gameInterval = requestAnimationFrame(updateGame);
+}
+
+// 4. Отслеживание нажатий на клавиатуре (A, S, D, F)
+const keyToLane = { 'KeyA': 0, 'KeyS': 1, 'KeyD': 2, 'KeyF': 3 };
+
+window.addEventListener('keydown', (e) => {
+    const targetLane = keyToLane[e.code];
+    
+    if (targetLane !== undefined) {
+        // Ищем плитку на этой дорожке, которая ближе всего к красной линии (внизу экрана)
+        const hitTileIndex = activeTiles.findIndex(tile => tile.lane === targetLane && tile.top > 400 && tile.top < 520);
+
+        if (hitTileIndex !== -1) {
+            // Игрок попал!
+            playTone(notesFreq[activeTiles[hitTileIndex].note]); // Играет звук
+            activeTiles[hitTileIndex].element.remove(); // Удаляем плитку
+            activeTiles.splice(hitTileIndex, 1);
+            
+            score += 10; // Добавляем очки
+            document.getElementById('score').innerText = score;
+        }
+    }
+});
